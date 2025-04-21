@@ -32,7 +32,7 @@ def process_chunk_with_llm(client, chunk: str, platform: str = "amazon") -> Dict
     Args:
         client: The LLM client
         chunk: The text chunk to process
-        platform: The platform/website being processed (amazon, ebay, walmart, airbnb)
+        platform: The platform/website being processed (amazon, ebay, walmart, alibaba, aliexpress)
         
     Returns:
         Dict containing the extracted product information
@@ -63,6 +63,65 @@ def process_chunk_with_llm(client, chunk: str, platform: str = "amazon") -> Dict
                 {{
                     "name": "Another product name",
                     "price": "price value",
+                    ...other fields...
+                }}
+            ]
+        }}
+        
+        Text: {chunk}
+        
+        Return only the JSON object without any additional text.
+        """
+    elif platform.lower() == "alibaba":
+        prompt = f"""
+        Extract product details from the following Alibaba product page text and return in JSON format.
+        
+        Return a JSON with a "products" array containing all extracted products, like this:
+        {{
+            "products": [
+                {{
+                    "name": "Product full name",
+                    "price": "Price range or exact price",
+                    "moq": "Minimum order quantity",
+                    "shipping": "Shipping details",
+                    "supplier": "Supplier name",
+                    "supplier_rating": "Supplier rating if available",
+                    "supplier_country": "Country of supplier",
+                    "product_rating": "Product rating if available",
+                    "description": "Short product description"
+                }},
+                {{
+                    "name": "Another product name",
+                    ...other fields...
+                }}
+            ]
+        }}
+        
+        Text: {chunk}
+        
+        Return only the JSON object without any additional text.
+        """
+    elif platform.lower() == "aliexpress":
+        prompt = f"""
+        Extract product details from the following AliExpress product page text and return in JSON format.
+        
+        Return a JSON with a "products" array containing all extracted products, like this:
+        {{
+            "products": [
+                {{
+                    "name": "Product full name",
+                    "price": "Current price",
+                    "original_price": "Original price before discount if available",
+                    "discount_percentage": "Discount percentage if available",
+                    "shipping": "Shipping details",
+                    "seller": "Store name",
+                    "orders": "Number of orders if available",
+                    "rating": "Product rating",
+                    "reviews": "Number of reviews",
+                    "description": "Short product description"
+                }},
+                {{
+                    "name": "Another product name",
                     ...other fields...
                 }}
             ]
@@ -217,11 +276,47 @@ def extract_walmart_product_urls(query, progress_bar):
     progress_bar.progress(1.0)
     return pages
 
-def extract_airbnb_urls(base_url, progress_bar):
-    """Extract Airbnb search page URL"""
-    # For Airbnb, we'll just use the base URL provided by the user
+def extract_alibaba_urls(query, progress_bar):
+    """Extract Alibaba search page URLs"""
+    base_url = "https://www.alibaba.com"
+    pages = []
+    max_pages = 5
+    
+    try:
+        for page in range(1, max_pages + 1):
+            progress_bar.progress(page / max_pages)
+            
+            # Format for Alibaba search pages
+            search_url = f"{base_url}/trade/search?keywords={query.replace(' ', '+')}&page={page}"
+            pages.append({'url': search_url})
+            time.sleep(0.5)
+    
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+    
     progress_bar.progress(1.0)
-    return [{'url': base_url}]
+    return pages
+
+def extract_aliexpress_urls(query, progress_bar):
+    """Extract AliExpress search page URLs"""
+    base_url = "https://www.aliexpress.com"
+    pages = []
+    max_pages = 5
+    
+    try:
+        for page in range(1, max_pages + 1):
+            progress_bar.progress(page / max_pages)
+            
+            # Format for AliExpress search pages
+            search_url = f"{base_url}/wholesale?SearchText={query.replace(' ', '+')}&page={page}"
+            pages.append({'url': search_url})
+            time.sleep(0.5)
+    
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+    
+    progress_bar.progress(1.0)
+    return pages
 
 def get_csv_download_link(df, filename):
     csv = df.to_csv(index=False)
@@ -250,19 +345,15 @@ with tab1:
     # Scraper selection
     scraper_option = st.selectbox(
         "Select Platform",
-        ["Amazon", "eBay", "Walmart", "Airbnb"]
+        ["Amazon", "eBay", "Walmart", "Alibaba", "AliExpress"]
     )
     
     # Input field based on selected scraper
-    if scraper_option == "Airbnb":
-        user_input = st.text_input("Enter Airbnb search URL:")
-        input_type = "url"
-    else:
-        user_input = st.text_input("Enter search query:")
-        input_type = "query"
-        # Show pages slider only for Amazon
-        if scraper_option == "Amazon":
-            num_pages = st.slider("Number of pages to scrape", 1, 10, 5)
+    user_input = st.text_input("Enter search query:")
+    input_type = "query"
+    # Show pages slider only for Amazon
+    if scraper_option == "Amazon":
+        num_pages = st.slider("Number of pages to scrape", 1, 10, 5)
     
     # Scrape button
     if st.button("Start URL Scraping"):
@@ -279,8 +370,10 @@ with tab1:
                     results = extract_ebay_product_urls(user_input, progress_bar)
                 elif scraper_option == "Walmart":
                     results = extract_walmart_product_urls(user_input, progress_bar)
-                elif scraper_option == "Airbnb":
-                    results = extract_airbnb_urls(user_input, progress_bar)
+                elif scraper_option == "Alibaba":
+                    results = extract_alibaba_urls(user_input, progress_bar)
+                elif scraper_option == "AliExpress":
+                    results = extract_aliexpress_urls(user_input, progress_bar)
                 
                 if results:
                     st.session_state.results_df = pd.DataFrame(results)
