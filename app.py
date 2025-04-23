@@ -13,6 +13,38 @@ import time
 from urllib.parse import quote_plus
 from datetime import datetime, timedelta
 import random
+import os
+
+# Check and install Playwright browsers if necessary (first run or Streamlit Cloud)
+try:
+    # Only attempt to import and check if we're on Streamlit Cloud or first run
+    import playwright
+    from playwright.sync_api import sync_playwright
+    
+    # Create a placeholder for initialization status
+    if 'playwright_initialized' not in st.session_state:
+        st.session_state.playwright_initialized = False
+    
+    # Check if we need to install browsers
+    if not st.session_state.playwright_initialized:
+        with st.spinner("Setting up browser automation (first run only)..."):
+            import subprocess
+            try:
+                # Run the installation command
+                result = subprocess.run(
+                    ["playwright", "install", "chromium"],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                st.session_state.playwright_initialized = True
+            except subprocess.CalledProcessError as e:
+                st.warning(f"Playwright browser installation failed, but the app may still work with Selenium: {e.stderr}")
+            except Exception as e:
+                st.warning(f"Couldn't initialize Playwright: {str(e)}")
+except ImportError:
+    # Playwright is not installed, but that's fine - we'll try Selenium first
+    pass
 
 # HTML processing and LLM functions
 def get_html_content(url: str) -> str:
@@ -279,13 +311,71 @@ def process_url(client, url: str, platform: str = "ebay", chunk_size: int = 8000
 # URL extraction functions from App1.py
 
 def setup_driver():
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-    return webdriver.Chrome(options=chrome_options)
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        
+        # Check for Streamlit Cloud environment (special handling required)
+        is_streamlit_cloud = os.environ.get('STREAMLIT_SHARING', '') == 'true'
+        
+        if is_streamlit_cloud:
+            # For Streamlit Cloud, we need to use the WebDriver manager to get the driver
+            st.info("Running on Streamlit Cloud - using webdriver_manager")
+            from webdriver_manager.chrome import ChromeDriverManager
+            from webdriver_manager.core.utils import ChromeType
+            from selenium.webdriver.chrome.service import Service
+            
+            service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+        else:
+            # For local execution, use the standard approach
+            driver = webdriver.Chrome(options=chrome_options)
+            
+        return driver
+    except Exception as e:
+        # Display error details for troubleshooting
+        st.error(f"Error setting up Chrome driver: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        
+        # Try alternative approach with playwright
+        try:
+            st.info("Trying alternative browser automation with Playwright...")
+            # Import here to not require it unless needed
+            import playwright.sync_api as pw
+            
+            # Create browser instance
+            browser = pw.sync_playwright().start().chromium.launch(headless=True)
+            page = browser.new_page()
+            
+            # Create a wrapper to mimic webdriver interface
+            class PlaywrightWrapper:
+                def __init__(self, browser, page):
+                    self.browser = browser
+                    self.page = page
+                
+                def get(self, url):
+                    self.page.goto(url)
+                
+                def page_source(self):
+                    return self.page.content()
+                
+                def quit(self):
+                    self.browser.close()
+                
+                @property
+                def page_source(self):
+                    return self.page.content()
+            
+            return PlaywrightWrapper(browser, page)
+            
+        except Exception as alt_e:
+            st.error(f"Alternative browser automation also failed: {str(alt_e)}")
+            raise
 
 def extract_ebay_product_urls(query, progress_bar):
     """Extract eBay search page URLs"""
@@ -574,11 +664,10 @@ if scraper_option == "Product Scraper":
             progress_bar.empty()
 
 elif scraper_option == "Flipkart Review Scraper":
-    # Run the Flipkart Review Scraper
-    # Import the main function from the flipkart review scraper
     try:
-        from flipkart_review_scraper import main as flipkart_review_main
-        flipkart_review_main()
+        from flipkart_review_scraper import main as flipkart_scraper_main
+        flipkart_scraper_main()
+    except ImportError:
+        st.error("Flipkart Review Scraper module not found. Make sure the required file is in the same directory.")
     except Exception as e:
-        st.error(f"Error loading Flipkart Review Scraper: {e}")
-        st.info("Please ensure flipkart_review_scraper.py is in the same directory.")
+        st.error(f"An error occurred while loading the Flipkart Review Scraper: {str(e)}")
