@@ -518,156 +518,157 @@ st.title("Web Scraper & Data Extractor")
 # Sidebar for selecting scraper
 with st.sidebar:
     st.title("Web Scrapers")
-    scraper_option = st.radio(
-        "Choose a scraper:",
-        ["Product Scraper", "Flipkart Review Scraper"]
-    )
+    scraper_option = "Product Scraper"  # Fixed to Product Scraper only
 
-if scraper_option == "Product Scraper":
-    st.header("E-commerce Product Scraper")
-    
-    # Scraper selection
-    scraper_option = st.selectbox(
-        "Select Platform",
-        ["eBay", "Walmart", "Flipkart", "AliExpress", "OYO Rooms"]
-    )
-    
-    # Input field based on selected scraper
-    if scraper_option == "OYO Rooms":
-        user_input = st.text_input("Enter city name (e.g., Hyderabad, Mumbai, Delhi):")
-    else:
-        user_input = st.text_input("Enter search query:")
-    
-    # Show pages slider for all platforms
-    num_pages = st.slider("Number of pages to scrape", 1, 10, 3)
-    
-    # Help text based on platform
-    if scraper_option == "OYO Rooms":
-        st.info("For OYO Rooms, enter a city name to search for hotels. The script will create URLs with default dates (today and tomorrow).")
-    elif scraper_option == "Flipkart":
-        st.warning("Flipkart may block requests if too many are made. Use fewer pages to avoid rate limiting.")
-    
-    # LLM API Key input
-    api_key = st.text_input("Enter Groq API Key", type="password")
-    
-    # Scrape button
-    if st.button("Scrape & Extract Data"):
-        if not user_input:
-            st.error("Please enter a search query")
-            st.stop()
-            
-        if not api_key:
-            st.error("Please enter your Groq API key")
-            st.stop()
-            
-        # Set up client
-        client = Groq(api_key=api_key)
-        
-        # Initialize progress elements
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        status_text.text("Step 1/2: Generating search URLs...")
-        
-        try:
-            # Generate URLs
-            if scraper_option == "eBay":
-                urls = extract_ebay_product_urls(user_input, progress_bar)
-            elif scraper_option == "Walmart":
-                urls = extract_walmart_product_urls(user_input, progress_bar)
-            elif scraper_option == "Flipkart":
-                urls = extract_flipkart_product_urls(user_input, progress_bar, num_pages)
-            elif scraper_option == "AliExpress":
-                urls = extract_aliexpress_urls(user_input, progress_bar, num_pages)
-            elif scraper_option == "OYO Rooms":
-                urls = extract_oyorooms_urls(user_input, progress_bar)
-            
-            if not urls:
-                st.warning("No URLs found. Please try a different search query.")
-                st.stop()
-            
-            # Display URLs (collapsed by default)
-            with st.expander(f"Generated {len(urls)} URLs"):
-                for i, url_data in enumerate(urls):
-                    st.text(f"{i+1}. {url_data['url']}")
-            
-            # Process first few URLs
-            max_urls_to_process = min(3, len(urls))
-            status_text.text(f"Step 2/2: Extracting data from {max_urls_to_process} URLs...")
-            
-            extracted_data = []
-            urls_to_process = urls[:max_urls_to_process]
-            
-            for i, url_data in enumerate(urls_to_process):
-                url = url_data['url']
-                progress_value = 0.5 + ((i+1) / (2 * max_urls_to_process))
-                progress_bar.progress(progress_value)
-                status_text.text(f"Processing URL {i+1}/{max_urls_to_process}: {url}")
-                
-                try:
-                    results = process_url(client, url, scraper_option.lower())
-                    
-                    # Add URL to each result
-                    for result in results:
-                        result['source_url'] = url
-                    
-                    extracted_data.extend(results)
-                
-                except Exception as e:
-                    st.error(f"Error processing URL {url}: {str(e)}")
-                
-                # Wait a bit between requests
-                time.sleep(1)
-            
-            # Display results
-            progress_bar.progress(1.0)
-            status_text.text("Processing complete!")
-            
-            if extracted_data:
-                # Create dataframe
-                df = pd.DataFrame(extracted_data)
-                
-                # Display the table
-                st.subheader("Extracted Data")
-                st.dataframe(df)
-                
-                # Download button
-                csv = df.to_csv(index=False).encode('utf-8')
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                
-                # Filename based on platform
-                filename = f"hotels_{timestamp}.csv" if scraper_option == "OYO Rooms" else f"products_{timestamp}.csv"
-                download_label = "Download Data (CSV)"
-                
-                st.download_button(
-                    label=download_label,
-                    data=csv,
-                    file_name=filename,
-                    mime="text/csv"
-                )
-                
-                # Summary statistics
-                st.subheader("Summary")
-                if scraper_option == "OYO Rooms":
-                    st.info(f"Found {len(extracted_data)} hotels from {max_urls_to_process} pages")
-                else:
-                    st.info(f"Found {len(extracted_data)} products from {max_urls_to_process} pages")
-            else:
-                st.warning("No data could be extracted from the URLs.")
-                
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
-        
-        finally:
-            progress_bar.empty()
+st.header("E-commerce Product Scraper")
 
-elif scraper_option == "Flipkart Review Scraper":
+# Scraper selection
+scraper_option = st.selectbox(
+    "Select Platform",
+    ["eBay", "Walmart", "Flipkart", "AliExpress", "OYO Rooms"]
+)
+
+# Input field based on selected scraper
+if scraper_option == "OYO Rooms":
+    user_input = st.text_input("Enter city name (e.g., Hyderabad, Mumbai, Delhi):")
+else:
+    user_input = st.text_input("Enter search query:")
+
+# Show pages slider for all platforms
+num_pages = st.slider("Number of pages to scrape", 1, 10, 3)
+
+# Help text based on platform
+if scraper_option == "OYO Rooms":
+    st.info("For OYO Rooms, enter a city name to search for hotels. The script will create URLs with default dates (today and tomorrow).")
+elif scraper_option == "Flipkart":
+    st.warning("Flipkart may block requests if too many are made. Use fewer pages to avoid rate limiting.")
+
+# LLM API Key input
+api_key = st.text_input("Enter Groq API Key", type="password")
+
+# Scrape button
+if st.button("Scrape & Extract Data"):
+    if not user_input:
+        st.error("Please enter a search query")
+        st.stop()
+        
+    if not api_key:
+        st.error("Please enter your Groq API key")
+        st.stop()
+        
+    # Set up client
+    client = Groq(api_key=api_key)
+    
+    # Initialize progress elements
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    status_text.text("Step 1/2: Generating search URLs...")
+    
     try:
-        from flipkart_review_scraper import main as flipkart_scraper_main
-        flipkart_scraper_main()
-    except ImportError:
-        st.error("Flipkart Review Scraper module not found. Make sure the required file is in the same directory.")
+        # Generate URLs
+        if scraper_option == "eBay":
+            urls = extract_ebay_product_urls(user_input, progress_bar)
+        elif scraper_option == "Walmart":
+            urls = extract_walmart_product_urls(user_input, progress_bar)
+        elif scraper_option == "Flipkart":
+            urls = extract_flipkart_product_urls(user_input, progress_bar, num_pages)
+        elif scraper_option == "AliExpress":
+            urls = extract_aliexpress_urls(user_input, progress_bar, num_pages)
+        elif scraper_option == "OYO Rooms":
+            urls = extract_oyorooms_urls(user_input, progress_bar)
+        
+        if not urls:
+            st.warning("No URLs found. Please try a different search query.")
+            st.stop()
+        
+        # Display URLs (collapsed by default)
+        with st.expander(f"Generated {len(urls)} URLs"):
+            for i, url_data in enumerate(urls):
+                st.text(f"{i+1}. {url_data['url']}")
+        
+        # Process first few URLs
+        max_urls_to_process = min(3, len(urls))
+        status_text.text(f"Step 2/2: Extracting data from {max_urls_to_process} URLs...")
+        
+        extracted_data = []
+        urls_to_process = urls[:max_urls_to_process]
+        
+        for i, url_data in enumerate(urls_to_process):
+            url = url_data['url']
+            progress_value = 0.5 + ((i+1) / (2 * max_urls_to_process))
+            progress_bar.progress(progress_value)
+            status_text.text(f"Processing URL {i+1}/{max_urls_to_process}: {url}")
+            
+            try:
+                results = process_url(client, url, scraper_option.lower())
+                
+                # Add URL to each result
+                for result in results:
+                    result['source_url'] = url
+                
+                extracted_data.extend(results)
+            
+            except Exception as e:
+                st.error(f"Error processing URL {url}: {str(e)}")
+            
+            # Wait a bit between requests
+            time.sleep(1)
+        
+        # Display results
+        progress_bar.progress(1.0)
+        status_text.text("Processing complete!")
+        
+        if extracted_data:
+            # Create dataframe
+            df = pd.DataFrame(extracted_data)
+            
+            # Display the table
+            st.subheader("Extracted Data")
+            st.dataframe(df)
+            
+            # Download button
+            csv = df.to_csv(index=False).encode('utf-8')
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Filename based on platform
+            filename = f"hotels_{timestamp}.csv" if scraper_option == "OYO Rooms" else f"products_{timestamp}.csv"
+            download_label = "Download Data (CSV)"
+            
+            st.download_button(
+                label=download_label,
+                data=csv,
+                file_name=filename,
+                mime="text/csv"
+            )
+            
+            # Summary statistics
+            st.subheader("Summary")
+            if scraper_option == "OYO Rooms":
+                st.info(f"Found {len(extracted_data)} hotels from {max_urls_to_process} pages")
+            else:
+                st.info(f"Found {len(extracted_data)} products from {max_urls_to_process} pages")
+        else:
+            st.warning("No data could be extracted from the URLs.")
+            
     except Exception as e:
-        st.error(f"An error occurred while loading the Flipkart Review Scraper: {str(e)}")
+        st.error(f"An error occurred: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+    
+    finally:
+        progress_bar.empty()
+
+# Add note about Flipkart Review Scraper
+st.markdown("---")
+with st.expander("Need to scrape Flipkart reviews?"):
+    st.markdown("""
+    The Flipkart Review Scraper is available as a separate tool. 
+    
+    To use it, run this command in your terminal:
+    ```
+    python flipkart_review_scraper.py
+    ```
+    
+    The review scraper works best when run directly rather than through this interface.
+    """)
