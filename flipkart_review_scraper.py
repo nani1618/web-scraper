@@ -6,7 +6,7 @@ import re
 import random
 from urllib.parse import urlparse, parse_qs, urlencode
 import streamlit as st
-import os
+import json
 
 # Global variable for wait time
 DEFAULT_WAIT_TIME = (2, 4)  # (min, max) seconds
@@ -38,10 +38,20 @@ def extract_product_info_from_url(url):
     return product_info
 
 def get_review_page_content(url):
-    """Get HTML content of a review page using requests"""
+    """Get HTML content of a review page using requests with multiple fallback options"""
+    # Different user agents to rotate through
+    user_agents = [
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0'
+    ]
+    
+    # Try direct request first
     try:
+        st.info("Attempting direct connection to Flipkart...")
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+            'User-Agent': random.choice(user_agents),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Connection': 'keep-alive',
@@ -49,15 +59,32 @@ def get_review_page_content(url):
             'Cache-Control': 'max-age=0',
         }
         
-        st.info("Fetching review content...")
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=15)
         
         if response.status_code == 200:
             html_content = response.text
             
             # Check if we got a valid page with reviews
             if "product-reviews" in html_content and "Certified Buyer" in html_content:
-                st.success("Successfully fetched reviews")
+                st.success("Successfully fetched reviews directly")
+                return html_content, None
+    except Exception as e:
+        st.warning(f"Direct connection failed: {str(e)}")
+    
+    # Try using a proxy service (AllOrigins)
+    try:
+        st.info("Trying to fetch via proxy service...")
+        encoded_url = requests.utils.quote(url)
+        proxy_url = f"https://api.allorigins.win/raw?url={encoded_url}"
+        
+        proxy_response = requests.get(proxy_url, timeout=20)
+        
+        if proxy_response.status_code == 200:
+            html_content = proxy_response.text
+            
+            # Check if we got a valid page with reviews
+            if "product-reviews" in html_content and "Certified Buyer" in html_content:
+                st.success("Successfully fetched reviews via proxy")
                 return html_content, None
             else:
                 # Check for various error conditions
@@ -69,12 +96,11 @@ def get_review_page_content(url):
                     
                 if "Access Denied" in html_content:
                     return None, "Access denied. Flipkart might be blocking automated access."
-                    
-                return None, "Got response but couldn't find reviews on the page."
-        else:
-            return None, f"Request failed with status code {response.status_code}"
     except Exception as e:
-        return None, f"Error accessing review page: {str(e)}"
+        st.warning(f"Proxy service failed: {str(e)}")
+    
+    # If all methods fail, return failure
+    return None, "Unable to fetch review content using available methods. Flipkart may be blocking access or there might be network issues."
 
 def extract_reviews_from_page(html_content, debug_mode=False):
     """Extract review data from Flipkart HTML content"""
@@ -319,6 +345,19 @@ def scrape_flipkart_reviews(url, max_pages=None, start_page=1, progress_callback
 def main():
     st.title("Flipkart Product Review Scraper")
     
+    with st.expander("How it works", expanded=False):
+        st.markdown("""
+        This tool scrapes product reviews from Flipkart.
+        
+        You can enter either:
+        - A Flipkart product page URL (like `https://www.flipkart.com/product-name/p/itemid?pid=XXX`)
+        - A Flipkart review page URL (like `https://www.flipkart.com/product-name/product-reviews/itemid?pid=XXX`)
+        
+        The tool will extract all available reviews across multiple pages.
+        
+        **Note:** If you're having connection issues with direct scraping, the tool will attempt to use alternative methods.
+        """)
+    
     review_url = st.text_input("Enter Flipkart product URL (product page or review page):", 
                               placeholder="https://www.flipkart.com/product-name/product-reviews/itm123?pid=ABC123")
     
@@ -388,6 +427,20 @@ def main():
             
             if reviews_df.empty:
                 st.warning("No reviews were found or could be scraped.")
+                
+                with st.expander("Troubleshooting Tips"):
+                    st.markdown("""
+                    **Common Issues:**
+                    1. Flipkart may be blocking access from Streamlit Cloud servers
+                    2. Network connectivity issues between Streamlit and Flipkart
+                    3. The product might not have any reviews
+                    
+                    **Solutions:**
+                    - Try running the app locally on your computer
+                    - Use the direct review URL from Flipkart
+                    - Try a different product
+                    """)
+                
                 return
                 
             # Display the results
